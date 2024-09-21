@@ -7,11 +7,6 @@ import kotlin.reflect.KFunction
 class Infuser {
     private val instances: MutableMap<KClass<*>, Any> = mutableMapOf()
     private val providers: MutableMap<KClass<*>, () -> Any> = mutableMapOf()
-    private val registeredClasses: MutableSet<KClass<*>> = mutableSetOf()
-
-    fun <T : Any> register(klass: KClass<T>) {
-        registeredClasses.add(klass)
-    }
 
     fun <T : Any> registerProvider(klass: KClass<T>, provider: () -> T) {
         providers[klass] = provider
@@ -19,10 +14,6 @@ class Infuser {
 
     @Suppress("UNCHECKED_CAST")
     fun <T : Any> getInstance(klass: KClass<T>, qualifier: String? = null): T {
-        if (!registeredClasses.contains(klass) && !providers.containsKey(klass)) {
-            throw UnresolvedDependencyException(klass)
-        }
-
         return when {
             providers.containsKey(klass) -> providers[klass]!!.invoke() as T
             klass.annotations.any { it is Singleton } -> instances.getOrPut(klass) { createInstance(klass, qualifier) } as T
@@ -35,7 +26,13 @@ class Infuser {
 
         val params = constructor.parameters.map { param ->
             val paramQualifier = param.annotations.filterIsInstance<Named>().firstOrNull()?.value ?: qualifier
-            getInstance(param.type.classifier as KClass<*>, paramQualifier)
+            val paramClass = param.type.classifier as? KClass<*>
+                ?: throw UnresolvedDependencyException(klass)
+            try {
+                getInstance(paramClass, paramQualifier)
+            } catch (e: Exception) {
+                throw MissingDependencyException(klass, paramClass)
+            }
         }
 
         return constructor.call(*params.toTypedArray())
@@ -44,18 +41,13 @@ class Infuser {
     private fun <T : Any> findSuitableConstructor(klass: KClass<T>): KFunction<T> {
         return klass.constructors.find { it.annotations.any { anno -> anno is Inject } }
             ?: klass.constructors.firstOrNull()
-            ?: throw IllegalStateException("No suitable constructor found for ${klass.simpleName}")
+            ?: throw UnresolvedDependencyException(klass)
     }
 
-    fun validateDependencies() {
+    fun validateDependencies(rootClass: KClass<*>) {
         val visited = mutableSetOf<KClass<*>>()
         val recursionStack = mutableSetOf<KClass<*>>()
-
-        registeredClasses.forEach { klass ->
-            if (klass !in visited) {
-                validateDependenciesRecursive(klass, visited, recursionStack)
-            }
-        }
+        validateDependenciesRecursive(rootClass, visited, recursionStack)
     }
 
     private fun validateDependenciesRecursive(
@@ -72,27 +64,17 @@ class Infuser {
             val dependencyClass = param.type.classifier as? KClass<*>
                 ?: throw UnresolvedDependencyException(klass)
 
-            if (!canProvide(dependencyClass)) {
-                throw MissingDependencyException(klass, dependencyClass)
-            }
-
             if (dependencyClass in recursionStack) {
                 throw CircularDependencyException(dependencyClass)
             }
 
-            if (dependencyClass !in visited && dependencyClass in registeredClasses) {
+            if (dependencyClass !in visited) {
                 validateDependenciesRecursive(dependencyClass, visited, recursionStack)
             }
         }
 
         recursionStack.remove(klass)
     }
-
-    private fun canProvide(klass: KClass<*>): Boolean {
-        return klass in registeredClasses || klass in providers
-    }
-
-
 }
 
 class UnresolvedDependencyException(val klass: KClass<*>) : IllegalStateException("Cannot resolve dependency for ${klass}")

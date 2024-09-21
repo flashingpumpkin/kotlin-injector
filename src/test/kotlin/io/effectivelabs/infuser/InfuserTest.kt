@@ -14,8 +14,6 @@ class InfuserTest {
     @Test
     fun `should inject dependencies`() {
         val infuser = Infuser()
-        infuser.register(ServiceA::class)
-        infuser.register(ServiceB::class)
 
         val instance = infuser.getInstance(ServiceA::class)
 
@@ -26,8 +24,6 @@ class InfuserTest {
     @Test
     fun `should inject dependencies correctly`() {
         val infuser = Infuser()
-        infuser.register(ServiceA::class)
-        infuser.register(ServiceB::class)
 
         val serviceA = infuser.getInstance(ServiceA::class)
 
@@ -38,7 +34,6 @@ class InfuserTest {
     @Test
     fun `should create singleton instances`() {
         val infuser = Infuser()
-        infuser.register(ServiceB::class)
 
         val instance1 = infuser.getInstance(ServiceB::class)
         val instance2 = infuser.getInstance(ServiceB::class)
@@ -47,22 +42,11 @@ class InfuserTest {
     }
 
     @Test
-    fun `should throw exception for unregistered dependencies`() {
-        val infuser = Infuser()
-
-        assertThrows<UnresolvedDependencyException> {
-            infuser.getInstance(ServiceA::class)
-        }
-    }
-
-    @Test
     fun `should detect circular dependencies`() {
         val infuser = Infuser()
-        infuser.register(CircularA::class)
-        infuser.register(CircularB::class)
 
         assertThrows<CircularDependencyException> {
-            infuser.validateDependencies()
+            infuser.validateDependencies(CircularA::class)
         }
     }
 
