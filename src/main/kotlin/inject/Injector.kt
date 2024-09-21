@@ -88,7 +88,7 @@ class Injector private constructor() : AutoCloseable {
     }
 
     override fun close() {
-        lifecycleComponents.reversed().forEach { it.stop() }
+        lifecycleComponents.reversed().forEach { it.close() }
     }
 }
 

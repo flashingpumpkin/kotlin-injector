@@ -1,6 +1,5 @@
 package io.effectivelabs.inject
 
-interface Lifecycle {
+interface Lifecycle : AutoCloseable {
     fun start() {}
-    fun stop() {}
 }
