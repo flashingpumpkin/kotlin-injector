@@ -1,14 +1,15 @@
 package io.effectivelabs.inject
 
 import io.effectivelabs.inject.exceptions.CircularDependencyException
-import io.effectivelabs.inject.exceptions.MissingImplementationException
-import io.effectivelabs.inject.exceptions.UnresolvedDependencyException
+import io.effectivelabs.inject.exceptions.MissingProviderException
+import jakarta.inject.Singleton
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.junit.jupiter.MockitoExtension
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -17,9 +18,9 @@ class InjectorTest {
 
     @Test
     fun `should inject dependencies`() {
-        val injector = Injector.create()
+        val injector = Injector.create().start()
 
-        val instance = injector.inject(ServiceA::class)
+        val instance = injector.inject<ServiceA>()
 
         assertNotNull(instance)
         assertNotNull(instance.serviceB)
@@ -27,9 +28,9 @@ class InjectorTest {
 
     @Test
     fun `should inject dependencies correctly`() {
-        val injector = Injector.create()
+        val injector = Injector.create().start()
 
-        val serviceA = injector.inject(ServiceA::class)
+        val serviceA = injector.inject<ServiceA>()
 
         assertNotNull(serviceA)
         assertNotNull(serviceA.serviceB)
@@ -37,20 +38,20 @@ class InjectorTest {
 
     @Test
     fun `should create singleton instances`() {
-        val injector = Injector.create()
+        val injector = Injector.create().start()
 
-        val instance1 = injector.inject(ServiceB::class)
-        val instance2 = injector.inject(ServiceB::class)
+        val instance1: ServiceB = injector.inject()
+        val instance2: ServiceB = injector.inject()
 
         assertSame(instance1, instance2)
     }
 
     @Test
     fun `should create new instances`() {
-        val injector = Injector.create()
+        val injector = Injector.create().start()
 
-        val instance1 = injector.inject(ServiceA::class)
-        val instance2 = injector.inject(ServiceA::class)
+        val instance1: ServiceA = injector.inject()
+        val instance2: ServiceA = injector.inject()
 
         assertNotNull(instance1)
         assertNotNull(instance2)
@@ -73,7 +74,7 @@ class InjectorTest {
 
     @Test
     fun `should use lifecycle components`() {
-        val service = Injector.create().use {
+        val service = Injector.create().start().use {
             it.inject<ServiceWithLifecycle>().also {
                 assertTrue(it.started)
                 assertFalse(it.stopped)
@@ -85,7 +86,8 @@ class InjectorTest {
     @Test
     fun `should inject dependencies from module`() {
         val injector = Injector.create()
-        injector.registerModule(TestModule())
+            .registerModule(TestModule())
+            .start()
 
         val instance = injector.inject<ModuleDependency>()
 
@@ -96,7 +98,8 @@ class InjectorTest {
     @Test
     fun `should inject dependencies with arguments from module`() {
         val injector = Injector.create()
-        injector.registerModule(TestModule())
+            .registerModule(TestModule())
+            .start()
 
         val instance = injector.inject<ModuleMultiArgService>()
 
@@ -109,14 +112,15 @@ class InjectorTest {
     @Test
     fun `should throw error on missing implementation`() {
         val injector = Injector.create()
-        injector.registerModule(TestModule())
+            .registerModule(TestModule())
+            .start()
 
-        val result = assertThrows<MissingImplementationException> {
+        val result = assertThrows<MissingProviderException> {
             injector.inject<MissingImplementationService>()
         }
 
         assertEquals(
-            "No implementation found for io.effectivelabs.inject.InjectorTest.MissingImplementation",
+            "No provider for abstract class 'io.effectivelabs.inject.InjectorTest.MissingImplementation' found. Please use @ProviderMethod to provide an instance.",
             result.message
         )
     }
@@ -124,25 +128,41 @@ class InjectorTest {
     @Test
     fun `should inject dependencies from module with implementation provider`() {
         val injector = Injector.create()
-        injector.registerModule(ImplementationProvider())
+            .registerModule(ImplementationProvider())
+            .start()
 
         val instance = injector.inject<MissingImplementation>()
 
         assertNotNull(instance)
+        assertIs<ImplementationProvider.Impl>(instance)
+    }
+
+    @Test
+    fun `should be able to override provided implementations`() {
+        val injector = Injector.create()
+            .registerModule(TestModule())
+            .registerModule(ImplementationProvider())
+            .registerModule(OverrideProvider())
+            .start()
+
+        val instance = injector.inject<MissingImplementation>()
+
+        assertNotNull(instance)
+        assertIs<OverrideProvider.Impl>(instance)
     }
 
     class TestModule : Module {
-        @Provider
+        @ProviderMethod
         fun provideModuleDependency(): ModuleDependency {
             return ModuleDependency("Test Dependency")
         }
 
-        @Provider
+        @ProviderMethod
         fun provideModuleService(dependency: ModuleDependency): ModuleService {
             return ModuleService("Injected Arg", dependency)
         }
 
-        @Provider
+        @ProviderMethod
         fun provideMultiArgService(
             moduleDependency: ModuleDependency,
             moduleService: ModuleService
@@ -152,9 +172,20 @@ class InjectorTest {
     }
 
     class ImplementationProvider : Module {
-        @Provider
+        class Impl : MissingImplementation
+
+        @ProviderMethod
         fun provideMissingImplementation(): MissingImplementation {
-            return object : MissingImplementation {}
+            return Impl()
+        }
+    }
+
+    class OverrideProvider : Module {
+        class Impl : MissingImplementation
+
+        @ProviderMethod
+        fun provideMissingImplementation(): MissingImplementation {
+            return Impl()
         }
     }
 

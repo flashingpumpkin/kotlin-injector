@@ -1,15 +1,15 @@
 package io.effectivelabs.inject
 
 import io.effectivelabs.inject.exceptions.CircularDependencyException
-import io.effectivelabs.inject.exceptions.MissingImplementationException
+import io.effectivelabs.inject.exceptions.MissingProviderException
 import io.effectivelabs.inject.exceptions.MissingSuitableConstructorException
 import io.effectivelabs.inject.exceptions.UnresolvedDependencyException
+import jakarta.inject.Inject
+import jakarta.inject.Singleton
 import kotlin.reflect.KCallable
 import kotlin.reflect.KClass
 
-interface Module
-
-class Injector private constructor() : AutoCloseable {
+class Injector private constructor() {
     private val instances = mutableMapOf<KClass<*>, Any>()
     private val lifecycleComponents = mutableListOf<Lifecycle>()
     private val validatedClasses = mutableSetOf<KClass<*>>()
@@ -19,23 +19,21 @@ class Injector private constructor() : AutoCloseable {
         fun create(): Injector = Injector()
     }
 
-    fun registerModule(module: Module) = apply {
-        modules.add(module)
+    fun registerModule(module: Module): Injector = apply {
+        modules.add(0, module)
     }
 
-    inline fun <reified T : Any> inject(): T = inject(T::class)
-
     @Suppress("UNCHECKED_CAST")
-    fun <T : Any> inject(klass: KClass<T>): T {
+    private fun <T : Any> inject(klass: KClass<T>): T {
         validateDependencies(klass)
 
         return when {
-            klass.isSingleton() -> instances.getOrPut(klass) { createInstance(klass) } as T
-            else -> createInstance(klass)
+            klass.isSingleton() -> instances.getOrPut(klass) { createInstance(klass, isSingleton = true) } as T
+            else -> createInstance(klass, isSingleton = false)
         }
     }
 
-    private fun <T : Any> createInstance(klass: KClass<T>): T {
+    private fun <T : Any> createInstance(klass: KClass<T>, isSingleton: Boolean): T {
         val constructor = findConstructor(klass)
 
         val params = constructor.parameters.map { param ->
@@ -45,7 +43,9 @@ class Injector private constructor() : AutoCloseable {
         val instance = constructor.call(*params.toTypedArray())
 
         if (instance is Lifecycle) {
-            lifecycleComponents.add(instance)
+            if (isSingleton) {
+                lifecycleComponents.add(instance)
+            }
             instance.start()
         }
 
@@ -55,8 +55,8 @@ class Injector private constructor() : AutoCloseable {
     @Suppress("UNCHECKED_CAST")
     private fun <T : Any> findConstructor(klass: KClass<T>): KCallable<T> {
         return (findProviderMethod(klass) ?: klass.getConstructor()) as KCallable<T>? ?: run {
-            if(klass.isAbstract) {
-                throw MissingImplementationException(klass)
+            if (klass.isAbstract) {
+                throw MissingProviderException(klass)
             } else {
                 throw MissingSuitableConstructorException(klass)
             }
@@ -107,10 +107,25 @@ class Injector private constructor() : AutoCloseable {
         instances.keys.forEach { validateDependencies(it) }
     }
 
-    fun start() = apply { validateAllDependencies() }
+    fun start(): StartedInjector {
+        return StartedInjector(this)
+    }
 
-    override fun close() {
+    private fun close() {
         lifecycleComponents.reversed().forEach { it.close() }
+    }
+
+    class StartedInjector(private val injector: Injector) : AutoCloseable {
+        init {
+            injector.validateAllDependencies()
+        }
+
+        fun <T : Any> getInstance(klass: KClass<T>): T = injector.inject(klass)
+        inline fun <reified T : Any> inject(): T = getInstance(T::class)
+
+        override fun close() {
+            injector.close()
+        }
     }
 }
 
@@ -121,5 +136,5 @@ fun <T : Any> KClass<T>.getConstructor(): KCallable<T>? {
 }
 
 fun KClass<*>.isSingleton() = annotations.any { it is Singleton }
-fun KCallable<*>.isProvider() = annotations.any { it is Provider }
+fun KCallable<*>.isProvider() = annotations.any { it is ProviderMethod }
 
