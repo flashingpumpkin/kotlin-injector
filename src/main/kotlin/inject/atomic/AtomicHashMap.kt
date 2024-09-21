@@ -1,4 +1,4 @@
-package io.effectivelabs.inject
+package io.effectivelabs.inject.atomic
 
 import java.util.concurrent.atomic.AtomicReference
 

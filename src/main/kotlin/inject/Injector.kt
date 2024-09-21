@@ -1,5 +1,8 @@
 package io.effectivelabs.inject
 
+import io.effectivelabs.inject.atomic.AtomicHashMap
+import io.effectivelabs.inject.atomic.AtomicList
+import io.effectivelabs.inject.atomic.AtomicSet
 import io.effectivelabs.inject.exceptions.CircularDependencyException
 import io.effectivelabs.inject.exceptions.MissingProviderException
 import io.effectivelabs.inject.exceptions.MissingSuitableConstructorException
