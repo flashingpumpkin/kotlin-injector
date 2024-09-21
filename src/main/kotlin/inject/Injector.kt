@@ -6,21 +6,65 @@ import io.effectivelabs.inject.exceptions.MissingSuitableConstructorException
 import io.effectivelabs.inject.exceptions.UnresolvedDependencyException
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.reflect.KCallable
 import kotlin.reflect.KClass
 
+class AtomicHashMap<K, V>() {
+    private val map = AtomicReference(mapOf<K, V>())
+    val keys get() = map.get().keys
+
+    fun getOrPut(key: K, defaultValue: () -> V): V {
+        return map.updateAndGet { it + (key to it.getOrDefault(key, defaultValue())) }[key]!!
+    }
+}
+
+class AtomicList<T> {
+    private val list = AtomicReference(listOf<T>())
+
+    fun prepend(element: T): List<T> {
+        return list.updateAndGet { listOf(element) + it }
+    }
+
+    fun asSequence(): Sequence<T> {
+        return list.get().asSequence()
+    }
+
+    fun forEach(action: (T) -> Unit) {
+        list.get().forEach(action)
+    }
+
+    operator fun contains(element: T): Boolean {
+        return list.get().contains(element)
+    }
+
+}
+
+class AtomicSet<T> {
+    private val set = AtomicReference(setOf<T>())
+
+    fun add(element: T): Boolean {
+        return set.updateAndGet { it + element }.contains(element)
+    }
+
+    operator fun contains(element: T): Boolean {
+        return set.get().contains(element)
+    }
+}
+
+
 class Injector private constructor() {
-    private val instances = mutableMapOf<KClass<*>, Any>()
-    private val lifecycleComponents = mutableListOf<Lifecycle>()
-    private val validatedClasses = mutableSetOf<KClass<*>>()
-    private val modules = mutableListOf<Module>()
+    private val instances = AtomicHashMap<KClass<*>, Any>()
+    private val lifecycleComponents = AtomicList<Lifecycle>()
+    private val validatedClasses = AtomicSet<KClass<*>>()
+    private val modules = AtomicList<Module>()
 
     companion object {
         fun create(): Injector = Injector()
     }
 
     fun registerModule(module: Module): Injector = apply {
-        modules.add(0, module)
+        modules.prepend(module)
     }
 
     fun validateAllDependencies(): Injector = apply {
@@ -52,7 +96,7 @@ class Injector private constructor() {
 
         if (instance is Lifecycle) {
             if (isSingleton) {
-                lifecycleComponents.add(0, instance)
+                lifecycleComponents.prepend(instance)
             }
             instance.start()
         }
@@ -133,7 +177,6 @@ class Injector private constructor() {
 fun <T : Any> KClass<T>.getConstructor(): KCallable<T>? {
     return this.constructors.find { it.annotations.any { it is Inject } }
         ?: this.constructors.firstOrNull()
-
 }
 
 fun KClass<*>.isSingleton() = annotations.any { it is Singleton }
