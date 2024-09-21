@@ -1,0 +1,7 @@
+[versions]
+kotlin = "2.0.20"
+jakarta = "2.0.1"
+
+[libraries]
+jakarta-inject-api = { module = "jakarta.inject:jakarta.inject-api", version.ref = "jakarta" }
+
