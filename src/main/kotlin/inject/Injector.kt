@@ -6,51 +6,8 @@ import io.effectivelabs.inject.exceptions.MissingSuitableConstructorException
 import io.effectivelabs.inject.exceptions.UnresolvedDependencyException
 import jakarta.inject.Inject
 import jakarta.inject.Singleton
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.reflect.KCallable
 import kotlin.reflect.KClass
-
-class AtomicHashMap<K, V>() {
-    private val map = AtomicReference(mapOf<K, V>())
-    val keys get() = map.get().keys
-
-    fun getOrPut(key: K, defaultValue: () -> V): V {
-        return map.updateAndGet { it + (key to it.getOrDefault(key, defaultValue())) }[key]!!
-    }
-}
-
-class AtomicList<T> {
-    private val list = AtomicReference(listOf<T>())
-
-    fun prepend(element: T): List<T> {
-        return list.updateAndGet { listOf(element) + it }
-    }
-
-    fun asSequence(): Sequence<T> {
-        return list.get().asSequence()
-    }
-
-    fun forEach(action: (T) -> Unit) {
-        list.get().forEach(action)
-    }
-
-    operator fun contains(element: T): Boolean {
-        return list.get().contains(element)
-    }
-
-}
-
-class AtomicSet<T> {
-    private val set = AtomicReference(setOf<T>())
-
-    fun add(element: T): Boolean {
-        return set.updateAndGet { it + element }.contains(element)
-    }
-
-    operator fun contains(element: T): Boolean {
-        return set.get().contains(element)
-    }
-}
 
 
 class Injector private constructor() {
