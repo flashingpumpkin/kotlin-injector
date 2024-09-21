@@ -23,6 +23,14 @@ class Injector private constructor() {
         modules.add(0, module)
     }
 
+    fun validateAllDependencies(): Injector = apply {
+        instances.keys.forEach { validateDependencies(it) }
+    }
+
+    fun start(): StartedInjector {
+        return StartedInjector(this)
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun <T : Any> inject(klass: KClass<T>): T {
         validateDependencies(klass)
@@ -44,7 +52,7 @@ class Injector private constructor() {
 
         if (instance is Lifecycle) {
             if (isSingleton) {
-                lifecycleComponents.add(instance)
+                lifecycleComponents.add(0, instance)
             }
             instance.start()
         }
@@ -74,7 +82,8 @@ class Injector private constructor() {
         return provider
     }
 
-    fun validateDependencies(klass: KClass<*>) {
+
+    internal fun validateDependencies(klass: KClass<*>) {
         validateDependenciesRecursive(klass, mutableSetOf<KClass<*>>())
     }
 
@@ -103,16 +112,8 @@ class Injector private constructor() {
         recursionStack.remove(klass)
     }
 
-    fun validateAllDependencies() {
-        instances.keys.forEach { validateDependencies(it) }
-    }
-
-    fun start(): StartedInjector {
-        return StartedInjector(this)
-    }
-
-    private fun close() {
-        lifecycleComponents.reversed().forEach { it.close() }
+    private fun close(): Injector = apply {
+        lifecycleComponents.forEach { it.close() }
     }
 
     class StartedInjector(private val injector: Injector) : AutoCloseable {
